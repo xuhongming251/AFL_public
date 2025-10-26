@@ -140,7 +140,7 @@ class LoRAPromptManagerV2:
             "required": {
                 "lora_name": (lora_files,),
                 "overwrite": ([False, True], {"default": False}),
-                "choose_prompt": ([1, 2], {"default": 1, "label": "选择输出的提示词 (1或2)"}),
+                "choose_prompt": ([1, 2, 3], {"default": 1, "label": "选择输出的提示词 (1、2或3)"}),
             },
             "optional": {
                 "over_write": ("STRING", {"placeholder": "从LoRA Overwrite节点传入的JSON数据"}),
@@ -358,7 +358,9 @@ class LoRAPromptManagerV2:
             self._save_all_properties(lora_path, properties)
             
             # 根据用户选择的choose_prompt选择输出的提示词
-            if choose_prompt == 2 and properties.get('prompt2', '').strip():
+            if choose_prompt == 3 and properties.get('prompt3', '').strip():
+                output_prompt = properties['prompt3']
+            elif choose_prompt == 2 and properties.get('prompt2', '').strip():
                 output_prompt = properties['prompt2']
             else:
                 output_prompt = properties['prompt1']
