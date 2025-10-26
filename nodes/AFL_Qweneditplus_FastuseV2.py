@@ -79,11 +79,16 @@ class AFL_Qweneditplus_FastuseV2:
                         width = round(samples.shape[3] * scale_by / 8.0) * 8
                         height = round(samples.shape[2] * scale_by / 8.0) * 8
                         s_ref = comfy.utils.common_upscale(samples, width, height, "area", "disabled")
-                    else:  # NaN - 不缩放，直接使用原始尺寸
-                        # 确保尺寸是8的倍数以兼容VAE
-                        width = round(samples.shape[3] / 8.0) * 8
-                        height = round(samples.shape[2] / 8.0) * 8
-                        s_ref = comfy.utils.common_upscale(samples, width, height, "area", "disabled")
+                    else:  # NaN - 不缩放，直接使用原始尺寸（仅调整为8的倍数）
+                        # 确保尺寸是8的倍数以兼容VAE，但保持原始图像的实际大小
+                        # 对于1248这样已经是8的倍数的尺寸，不会改变
+                        width = (samples.shape[3] // 8) * 8
+                        height = (samples.shape[2] // 8) * 8
+                        # 只有当尺寸需要调整时才进行缩放
+                        if width != samples.shape[3] or height != samples.shape[2]:
+                            s_ref = comfy.utils.common_upscale(samples, width, height, "area", "disabled")
+                        else:
+                            s_ref = samples  # 尺寸已经是8的倍数，不需要缩放
                     
                     # 生成latent
                     latent = vae.encode(s_ref.movedim(1, -1)[:, :, :, :3])
