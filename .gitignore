@@ -1,0 +1,33 @@
+# 忽略Python编译缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 忽略IDE和编辑器文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 忽略操作系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略虚拟环境
+venv/
+env/
+ENV/
+
+# 忽略日志文件
+*.log
+
+# 忽略临时文件
+*.tmp
+*.temp
+.cache/
+
+# 保留重要资源目录
+# backup_png/ 已在项目中使用，不被忽略
+# workflow/ 已在项目中使用，不被忽略

@@ -34,7 +34,7 @@ class CalculateOptimalResolution:
                     "default": 1024,
                     "min": 128,
                     "max": 2048,
-                    "step": 64,
+                    "step": 1,
                     "tooltip": "图像最长边的目标像素数"
                 }),
                 "divisible_by": ("INT", {
