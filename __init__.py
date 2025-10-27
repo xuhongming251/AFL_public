@@ -19,8 +19,9 @@ if not os.path.exists(nodes_dir):
 
 # AFL_public中包含的节点文件名（不带.py后缀）
 node_files = [
-    "AFL_Qweneditplus_Fastuse",
     "AFL_Qweneditplus_FastuseV2",
+    "AFL_LoadImage",
+    "AFL_fast_text",
     "aspect_ratio_matcher",
     "eye_direction",
     "image_auto_switch",
