@@ -17,11 +17,11 @@ class AFL_Qweneditplus_FastuseV2:
                 "image2": ("IMAGE",),
                 "image3": ("IMAGE",),
                 # 添加缩放控制选项
-                "images_vl1": (["ini(384x384)", "NaN"], {"default": "ini(384x384)"}),
+                "images_vl1": (["ini(384x384)", "ini(1024*1024)", "NaN"], {"default": "ini(384x384)"}),
                 "ref_latents1": (["ini(1024*1024)", "NaN"], {"default": "ini(1024*1024)"}),
-                "images_vl2": (["ini(384x384)", "NaN"], {"default": "ini(384x384)"}),
+                "images_vl2": (["ini(384x384)", "ini(1024*1024)", "NaN"], {"default": "ini(384x384)"}),
                 "ref_latents2": (["ini(1024*1024)", "NaN"], {"default": "ini(1024*1024)"}),
-                "images_vl3": (["ini(384x384)", "NaN"], {"default": "ini(384x384)"}),
+                "images_vl3": (["ini(384x384)", "ini(1024*1024)", "NaN"], {"default": "ini(384x384)"}),
                 "ref_latents3": (["ini(1024*1024)", "NaN"], {"default": "ini(1024*1024)"}),
                 # 添加选择latent输出的选项
                 "choose_latent": (["image1", "image2", "image3"], {"default": "image1"}),
@@ -60,8 +60,15 @@ class AFL_Qweneditplus_FastuseV2:
 
                 # 处理 images_vl - 视觉编码
                 if current_image_vl_setting == "ini(384x384)":
-                    # 使用默认缩放逻辑
+                    # 使用384x384缩放逻辑
                     total = int(384 * 384)
+                    scale_by = math.sqrt(total / (samples.shape[3] * samples.shape[2]))
+                    width = round(samples.shape[3] * scale_by)
+                    height = round(samples.shape[2] * scale_by)
+                    s = comfy.utils.common_upscale(samples, width, height, "area", "disabled")
+                elif current_image_vl_setting == "ini(1024*1024)":
+                    # 使用1024x1024缩放逻辑
+                    total = int(1024 * 1024)
                     scale_by = math.sqrt(total / (samples.shape[3] * samples.shape[2]))
                     width = round(samples.shape[3] * scale_by)
                     height = round(samples.shape[2] * scale_by)
