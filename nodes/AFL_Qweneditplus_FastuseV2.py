@@ -78,7 +78,6 @@ class AFL_Qweneditplus_FastuseV2:
                 images_vl.append(s.movedim(1, -1))
 
                 # 处理 ref_latents - 潜在空间
-                # 明确检查vae是否为None，避免尝试自动加载其他VAE
                 if vae is not None:
                     if current_ref_setting == "ini(1024*1024)":
                         # 使用默认缩放逻辑
@@ -98,17 +97,13 @@ class AFL_Qweneditplus_FastuseV2:
                         else:
                             s_ref = samples  # 尺寸已经是8的倍数，不需要缩放
                     
-                    try:
-                        # 生成latent，增加异常处理
-                        latent = vae.encode(s_ref.movedim(1, -1)[:, :, :, :3])
-                        ref_latents.append(latent)
-                        
-                        # 只有当这是用户选择的图像时，才保存latent用于输出
-                        if i == chosen_latent_index:
-                            chosen_latent = latent
-                    except Exception as e:
-                        # 捕获任何编码错误，但继续执行以避免整个节点失败
-                        print(f"Warning: Error encoding image {i+1}: {str(e)}")
+                    # 生成latent
+                    latent = vae.encode(s_ref.movedim(1, -1)[:, :, :, :3])
+                    ref_latents.append(latent)
+                    
+                    # 只有当这是用户选择的图像时，才保存latent用于输出
+                    if vae is not None and i == chosen_latent_index:
+                        chosen_latent = latent
 
                 image_prompt += "Picture {}: <|vision_start|><|image_pad|><|vision_end|>".format(i + 1)
 
