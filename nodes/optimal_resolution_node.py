@@ -18,11 +18,7 @@ class CalculateOptimalResolution:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "mode": ("COMBO", {
-                    "default": "megapixels",
-                    "options": ["megapixels", "longest_side"],
-                    "tooltip": "选择使用百万像素模式或最长边模式"
-                }),
+                "mode": ("COMBO", {"default": "megapixels", "options": ["megapixels", "longest_side"], "tooltip": "选择使用百万像素模式或最长边模式"}),
                 "megapixels": ("FLOAT", {
                     "default": 1.0,
                     "min": 0.1,
