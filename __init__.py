@@ -27,7 +27,6 @@ node_files = [
     "image_auto_switch",
     "Letterbox_crop_and_resize",
     "lora_overwrite",
-    "lora_prompt_manager",
     "lora_prompt_manager_v2",
     "mask_box_crop_node",
     "mask_grow_with_inner_blur",
