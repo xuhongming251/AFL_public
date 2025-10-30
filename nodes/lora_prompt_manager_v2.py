@@ -1,10 +1,15 @@
 import os
 import yaml
 import json
-import ctypes
-import ctypes.wintypes
 import logging
+import platform  # 添加平台检测
+import hashlib  # 添加哈希库用于Linux实现
 from typing import List, Dict, Optional, Tuple
+
+# 仅在Windows平台导入ctypes相关模块
+if platform.system() == 'Windows':
+    import ctypes
+    import ctypes.wintypes
 
 # 配置日志系统 - 便于错误分析
 logging.basicConfig(
@@ -19,105 +24,168 @@ logger = logging.getLogger("PromptNodes")
 
 
 class FilePropertyManager:
-    """文件属性管理工具类"""
-    GENERIC_READ = 0x80000000
-    GENERIC_WRITE = 0x40000000
-    OPEN_EXISTING = 3
-    CREATE_ALWAYS = 2
-    FILE_ATTRIBUTE_NORMAL = 0x80
-    INVALID_HANDLE_VALUE = -1
-
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-
-    @classmethod
-    def get_custom_property(cls, file_path: str, prop_name: str) -> Optional[str]:
-        """读取文件的自定义属性值"""
+    """文件属性管理工具类 - 跨平台版本"""
+    def __init__(self):
+        self.platform = platform.system()
+        # Linux实现的存储路径
+        self.properties_dir = os.path.join(os.path.expanduser("~"), ".afl_properties")
+        if self.platform != 'Windows' and not os.path.exists(self.properties_dir):
+            os.makedirs(self.properties_dir)
+            logger.info(f"创建Linux属性存储目录: {self.properties_dir}")
+    
+    def get_custom_property(self, file_path: str, prop_name: str) -> Optional[str]:
+        """读取文件的自定义属性值 - 跨平台实现"""
         try:
             file_path = os.path.abspath(file_path)
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
                 logger.warning(f"文件不存在: {file_path}")
                 return None
-            
-            stream_path = f"{file_path}:{prop_name}"
-            stream_path_w = ctypes.create_unicode_buffer(stream_path)
-            
-            h_file = cls.kernel32.CreateFileW(
-                stream_path_w,
-                cls.GENERIC_READ,
-                0,
-                None,
-                cls.OPEN_EXISTING,
-                cls.FILE_ATTRIBUTE_NORMAL,
-                None
-            )
-            
-            if h_file == cls.INVALID_HANDLE_VALUE:
-                logger.debug(f"属性 '{prop_name}' 不存在于文件 '{file_path}'")
-                return None
-            
-            try:
-                buffer = ctypes.create_string_buffer(1024 * 1024)
-                bytes_read = ctypes.wintypes.DWORD()
-                success = cls.kernel32.ReadFile(
-                    h_file, buffer, len(buffer), ctypes.byref(bytes_read), None
-                )
                 
-                if not success:
-                    logger.error(f"读取属性 '{prop_name}' 失败")
-                    return None
-                
-                return buffer.raw[:bytes_read.value].decode('utf-8', errors='replace')
-            finally:
-                cls.kernel32.CloseHandle(h_file)
+            # 根据平台选择不同的实现
+            if self.platform == 'Windows':
+                return self._get_windows_property(file_path, prop_name)
+            else:
+                return self._get_linux_property(file_path, prop_name)
         except Exception as e:
             logger.error(f"读取属性时发生错误: {str(e)}", exc_info=True)
             return None
-
-    @classmethod
-    def set_custom_property(cls, file_path: str, prop_name: str, value: str) -> bool:
-        """设置文件的自定义属性值"""
+    
+    def set_custom_property(self, file_path: str, prop_name: str, value: str) -> bool:
+        """设置文件的自定义属性值 - 跨平台实现"""
         try:
             file_path = os.path.abspath(file_path)
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
                 logger.warning(f"文件不存在: {file_path}")
                 return False
-            
-            stream_path = f"{file_path}:{prop_name}"
-            stream_path_w = ctypes.create_unicode_buffer(stream_path)
-            
-            h_file = cls.kernel32.CreateFileW(
-                stream_path_w,
-                cls.GENERIC_WRITE,
-                0,
-                None,
-                cls.CREATE_ALWAYS,
-                cls.FILE_ATTRIBUTE_NORMAL | 0x02000000,
-                None
-            )
-            
-            if h_file == cls.INVALID_HANDLE_VALUE:
-                logger.error(f"无法打开属性 '{prop_name}' 的数据流")
-                return False
-            
-            try:
-                value_bytes = value.encode('utf-8')
-                bytes_written = ctypes.wintypes.DWORD()
-                success = cls.kernel32.WriteFile(
-                    h_file, value_bytes, len(value_bytes),
-                    ctypes.byref(bytes_written), None
-                )
                 
-                result = success and bytes_written.value == len(value_bytes)
-                if result:
-                    logger.debug(f"成功写入属性 '{prop_name}' 到文件 '{file_path}'")
-                else:
-                    logger.error(f"写入属性 '{prop_name}' 失败")
-                return result
-            finally:
-                cls.kernel32.CloseHandle(h_file)
+            # 根据平台选择不同的实现
+            if self.platform == 'Windows':
+                return self._set_windows_property(file_path, prop_name, value)
+            else:
+                return self._set_linux_property(file_path, prop_name, value)
         except Exception as e:
             logger.error(f"设置属性时发生错误: {str(e)}", exc_info=True)
             return False
+    
+    # Windows平台的实现 - 使用文件流
+    def _get_windows_property(self, file_path: str, prop_name: str) -> Optional[str]:
+        # Windows常量
+        GENERIC_READ = 0x80000000
+        OPEN_EXISTING = 3
+        FILE_ATTRIBUTE_NORMAL = 0x80
+        INVALID_HANDLE_VALUE = -1
+        
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        
+        stream_path = f"{file_path}:{prop_name}"
+        stream_path_w = ctypes.create_unicode_buffer(stream_path)
+        
+        h_file = kernel32.CreateFileW(
+            stream_path_w,
+            GENERIC_READ,
+            0,
+            None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None
+        )
+        
+        if h_file == INVALID_HANDLE_VALUE:
+            logger.debug(f"Windows: 属性 '{prop_name}' 不存在于文件 '{file_path}'")
+            return None
+        
+        try:
+            buffer = ctypes.create_string_buffer(1024 * 1024)
+            bytes_read = ctypes.wintypes.DWORD()
+            success = kernel32.ReadFile(
+                h_file, buffer, len(buffer), ctypes.byref(bytes_read), None
+            )
+            
+            if not success:
+                logger.error(f"Windows: 读取属性 '{prop_name}' 失败")
+                return None
+            
+            return buffer.raw[:bytes_read.value].decode('utf-8', errors='replace')
+        finally:
+            kernel32.CloseHandle(h_file)
+    
+    def _set_windows_property(self, file_path: str, prop_name: str, value: str) -> bool:
+        # Windows常量
+        GENERIC_WRITE = 0x40000000
+        CREATE_ALWAYS = 2
+        FILE_ATTRIBUTE_NORMAL = 0x80
+        INVALID_HANDLE_VALUE = -1
+        
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        
+        stream_path = f"{file_path}:{prop_name}"
+        stream_path_w = ctypes.create_unicode_buffer(stream_path)
+        
+        h_file = kernel32.CreateFileW(
+            stream_path_w,
+            GENERIC_WRITE,
+            0,
+            None,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL | 0x02000000,
+            None
+        )
+        
+        if h_file == INVALID_HANDLE_VALUE:
+            logger.error(f"Windows: 无法打开属性 '{prop_name}' 的数据流")
+            return False
+            
+        try:
+            value_bytes = value.encode('utf-8')
+            bytes_written = ctypes.wintypes.DWORD()
+            success = kernel32.WriteFile(
+                h_file, value_bytes, len(value_bytes),
+                ctypes.byref(bytes_written), None
+            )
+            
+            result = success and bytes_written.value == len(value_bytes)
+            if result:
+                logger.debug(f"Windows: 成功写入属性 '{prop_name}' 到文件 '{file_path}'")
+            else:
+                logger.error(f"Windows: 写入属性 '{prop_name}' 失败")
+            return result
+        finally:
+            kernel32.CloseHandle(h_file)
+    
+    # Linux平台的实现 - 使用文件系统
+    def _get_linux_property(self, file_path: str, prop_name: str) -> Optional[str]:
+        # 为文件路径生成唯一标识符
+        file_id = self._get_file_id(file_path)
+        property_file = os.path.join(self.properties_dir, f"{file_id}_{prop_name}")
+        
+        if not os.path.exists(property_file):
+            logger.debug(f"Linux: 属性 '{prop_name}' 不存在于文件 '{file_path}'")
+            return None
+        
+        try:
+            with open(property_file, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Linux: 读取属性 '{prop_name}' 失败: {str(e)}")
+            return None
+    
+    def _set_linux_property(self, file_path: str, prop_name: str, value: str) -> bool:
+        # 为文件路径生成唯一标识符
+        file_id = self._get_file_id(file_path)
+        property_file = os.path.join(self.properties_dir, f"{file_id}_{prop_name}")
+        
+        try:
+            with open(property_file, 'w', encoding='utf-8') as f:
+                f.write(value)
+            logger.debug(f"Linux: 成功写入属性 '{prop_name}' 到文件 '{file_path}'")
+            return True
+        except Exception as e:
+            logger.error(f"Linux: 写入属性 '{prop_name}' 失败: {str(e)}")
+            return False
+    
+    def _get_file_id(self, file_path: str) -> str:
+        """生成文件路径的唯一标识符"""
+        return hashlib.md5(file_path.encode()).hexdigest()
 
 
 class LoRAPromptManagerV2:
