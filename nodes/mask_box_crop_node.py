@@ -312,7 +312,9 @@ class ImageRestoreNode:
         return (output_image,)
     
     def _apply_edge_blur(self, restored_image, original_image, crop_coords, blur_amount, pad_info, original_size):
-        """应用边缘模糊效果"""
+        """应用边缘模糊效果
+        blur_amount: 边缘纯白色的像素数量（从裁剪框边缘向内延伸的宽度，完全透明区域，显示原始图像）
+        """
         # 将PIL图像转换为numpy数组进行处理
         restored_np = np.array(restored_image)
         original_np = np.array(original_image)
@@ -327,23 +329,109 @@ class ImageRestoreNode:
         actual_x2 = x2
         actual_y2 = y2
         
-        # 创建一个mask来标识裁剪区域
-        mask = np.zeros(restored_np.shape[:2], dtype=np.uint8)
-        mask[actual_y1:actual_y2, actual_x1:actual_x2] = 255
+        # 创建基础mask，初始化为全0（完全使用处理后图像）
+        base_mask = np.zeros(restored_np.shape[:2], dtype=np.uint8)
         
-        # 应用模糊到mask，创建渐变边缘
+        # 定义边缘纯白色区域（完全透明，显示原始图像）
+        # 边缘区域：从裁剪框边缘向内延伸blur_amount像素的区域
         if blur_amount > 0:
-            mask = cv2.GaussianBlur(mask, (2 * blur_amount + 1, 2 * blur_amount + 1), 0)
+            # 计算内部区域边界（从边缘向内延伸blur_amount像素后的边界）
+            inner_x1 = actual_x1 + blur_amount
+            inner_y1 = actual_y1 + blur_amount
+            inner_x2 = actual_x2 - blur_amount
+            inner_y2 = actual_y2 - blur_amount
+            
+            # 确保内部区域边界有效（不超出裁剪框范围）
+            inner_x1 = max(actual_x1, min(inner_x1, actual_x2))
+            inner_y1 = max(actual_y1, min(inner_y1, actual_y2))
+            inner_x2 = max(actual_x1, min(inner_x2, actual_x2))
+            inner_y2 = max(actual_y1, min(inner_y2, actual_y2))
+            
+            # 定义过渡区域边界（从边缘向内延伸2*blur_amount像素，用于模糊过渡）
+            transition_x1 = actual_x1 + blur_amount
+            transition_y1 = actual_y1 + blur_amount
+            transition_x2 = actual_x2 - blur_amount
+            transition_y2 = actual_y2 - blur_amount
+            
+            # 创建过渡区域的mask（用于后续模糊）
+            transition_mask = np.zeros(restored_np.shape[:2], dtype=np.uint8)
+            
+            # 定义纯白色边缘区域（完全显示原始图像）
+            # 1. 左边边缘：从左边界到inner_x1
+            if actual_x1 < inner_x1:
+                base_mask[:, actual_x1:inner_x1] = 255
+            
+            # 2. 右边边缘：从inner_x2到右边界
+            if inner_x2 < actual_x2:
+                base_mask[:, inner_x2:actual_x2] = 255
+            
+            # 3. 顶部边缘：从顶部边界到inner_y1
+            if actual_y1 < inner_y1:
+                base_mask[actual_y1:inner_y1, actual_x1:actual_x2] = 255
+            
+            # 4. 底部边缘：从inner_y2到actual_y2
+            if inner_y2 < actual_y2:
+                base_mask[inner_y2:actual_y2, actual_x1:actual_x2] = 255
+            
+            # 定义过渡区域（用于创建平滑过渡效果）
+            # 这个区域将在后面应用高斯模糊
+            # 1. 左侧过渡区：从inner_x1到transition_x1 + blur_amount
+            left_transition_end = min(transition_x1 + blur_amount, actual_x2)
+            if inner_x1 < left_transition_end:
+                transition_mask[:, inner_x1:left_transition_end] = 255
+            
+            # 2. 右侧过渡区：从transition_x2 - blur_amount到inner_x2
+            right_transition_start = max(transition_x2 - blur_amount, actual_x1)
+            if right_transition_start < inner_x2:
+                transition_mask[:, right_transition_start:inner_x2] = 255
+            
+            # 3. 顶部过渡区：从inner_y1到transition_y1 + blur_amount
+            top_transition_end = min(transition_y1 + blur_amount, actual_y2)
+            if inner_y1 < top_transition_end:
+                transition_mask[inner_y1:top_transition_end, actual_x1:actual_x2] = 255
+            
+            # 4. 底部过渡区：从transition_y2 - blur_amount到inner_y2
+            bottom_transition_start = max(transition_y2 - blur_amount, actual_y1)
+            if bottom_transition_start < inner_y2:
+                transition_mask[bottom_transition_start:inner_y2, actual_x1:actual_x2] = 255
+            
+            # 清除内部区域（中心部分）为0，确保内部区域完全使用处理后图像
+            if inner_x1 < inner_x2 and inner_y1 < inner_y2:
+                base_mask[inner_y1:inner_y2, inner_x1:inner_x2] = 0
+                transition_mask[inner_y1:inner_y2, inner_x1:inner_x2] = 0
         
-        # 归一化mask到0-1范围
-        mask = mask.astype(np.float32) / 255.0
+        # 应用高斯模糊来创建从纯白到纯黑的平滑过渡
+        # 只对过渡区域应用模糊，保留纯白色边缘区域
+        if blur_amount > 0:
+            # 模糊半径为blur_amount，确保过渡平滑
+            # 使用奇数大小的内核以获得更好的效果
+            kernel_size = 2 * blur_amount + 1
+            
+            # 只对过渡区域应用模糊
+            blurred_transition = cv2.GaussianBlur(transition_mask, (kernel_size, kernel_size), 0)
+            
+            # 创建最终mask：纯白色边缘区域保持不变，过渡区域使用模糊后的结果
+            # 先复制基础mask（包含纯白色边缘区域）
+            final_mask = base_mask.copy()
+            
+            # 在过渡区域应用模糊效果，但确保不覆盖纯白色边缘区域
+            # 只在base_mask为0且transition_mask不为0的区域应用模糊
+            transition_area = (base_mask == 0) & (transition_mask > 0)
+            final_mask[transition_area] = blurred_transition[transition_area]
+        else:
+            final_mask = base_mask
         
-        # 应用混合效果
+        # 归一化到0-1范围
+        final_mask = final_mask.astype(np.float32) / 255.0
+        
         # 扩展mask维度以匹配图像
-        mask = np.stack([mask] * 3, axis=-1)
+        final_mask = np.stack([final_mask] * 3, axis=-1)
         
-        # 在裁剪区域边缘应用混合
-        restored_np = (restored_np * mask + original_np * (1 - mask)).astype(np.uint8)
+        # 应用混合：
+        # - mask值为0：完全使用处理后的图像 (restored_np)
+        # - mask值为1：完全使用原始图像 (original_np)
+        # - 中间值：混合使用
+        restored_np = (restored_np * (1 - final_mask) + original_np * final_mask).astype(np.uint8)
         
         # 转换回PIL图像
         return Image.fromarray(restored_np)

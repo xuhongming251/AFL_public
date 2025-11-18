@@ -32,6 +32,8 @@ node_files = [
     "mask_grow_with_inner_blur",
     "optimal_resolution_node",
     "ResizeWithLetterboxV2",
+    "Green_graffiti",
+    "Green_mask",
 ]
 
 # 初始化节点映射
